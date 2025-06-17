@@ -1,3 +1,2 @@
-my:
-  custom:
-    message: Hello from config YAML!
+refresh:
+  value: GIT 
