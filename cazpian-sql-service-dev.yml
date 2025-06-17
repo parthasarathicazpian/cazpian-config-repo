@@ -1,6 +1,0 @@
-app:
-  message: "Hello from SQL service - Dev Profile"
-result:
-  limit: 999
-refresh:
-  value: "Updated from Git"
