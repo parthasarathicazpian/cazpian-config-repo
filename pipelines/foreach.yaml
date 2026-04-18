@@ -1,0 +1,61 @@
+pipeline:
+  name: foreach-payment-type
+  version: "1.0.0"
+  mode: batch
+  catalog: GLUE
+  description: Process each distinct payment_type separately — clean, categorize, write partition-by-partition
+
+  nodes:
+    # 1. Bronze source — all trip events
+    - id: bronze_source
+      type: SOURCE_ICEBERG
+      config:
+        catalog: GLUE
+        table: bronze.trip_events
+
+    # 2. Basic cleanup before the loop
+    - id: clean
+      type: FILTER
+      input: bronze_source
+      config:
+        condition: "fare_amount > 0 AND trip_distance > 0 AND payment_type IS NOT NULL"
+
+    # 3. FOR_EACH partition — iterate over each distinct payment_type
+    - id: by_payment_type
+      type: FOR_EACH
+      input: clean
+      config:
+        # Auto-discover values from the column (runs .distinct() at execution time)
+        partition_col: payment_type
+        # Alternative: hardcode values instead
+        # values: ["CREDIT", "CASH", "DISPUTE", "NO_CHARGE"]
+        parallel: true
+        max_parallel: 4
+        iteration_var: current_type
+
+    # 4. Filter to the current iteration's value — uses the ${current_type} variable
+    - id: slice
+      type: FILTER
+      input: by_payment_type
+      config:
+        condition: "payment_type = '${current_type}'"
+
+    # 5. Add fare category per slice
+    - id: add_category
+      type: ADD_COLUMN
+      input: slice
+      config:
+        columns:
+          - name: fare_category
+            expr: "CASE WHEN fare_amount > 100 THEN 'premium' WHEN fare_amount > 50 THEN 'high' ELSE 'standard' END"
+          - name: _payment_type_partition
+            expr: "'${current_type}'"
+
+    # 6. Write this partition to its own gold table (table name templated per iteration)
+    - id: write_partition
+      type: TARGET_ICEBERG
+      input: add_category
+      config:
+        catalog: GLUE
+        table: "gold.trip_events_${current_type}"
+        mode: OVERWRITE
