@@ -1,5 +1,5 @@
 pipeline:
-  name: foreach-payment-type-sample
+  name: foreach-payment-type
   version: "1.0.0"
   mode: batch
   catalog: GLUE
